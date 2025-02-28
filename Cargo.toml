@@ -3,9 +3,10 @@ name = "vexide-motorgroup"
 description = "Motor groups for vexide in userland."
 repository = "https://github.com/zabackary/vexide-motorgroup/"
 authors = ["zabackary"]
+license = "MIT"
 license-file = "LICENSE.md"
 keywords = ["vex", "vexide", "vex-robotics", "robotics", "motorgroup"]
-version = "1.0.0"
+version = "1.0.1"
 edition = "2021"
 
 [package.metadata.v5]

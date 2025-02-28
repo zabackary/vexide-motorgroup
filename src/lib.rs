@@ -1,3 +1,74 @@
+//! # vexide-motorgroup
+//!
+//! Missing `MotorGroup` from VEXCode or PROS? This is a simple implementation of a
+//! `MotorGroup` for vexide which allows you to group motors together and control
+//! them as one.
+//!
+//! ## Installation
+//!
+//! Add the following to your `Cargo.toml`:
+//!
+//! ```toml
+//! [dependencies]
+//! // ... other dependencies
+//! vexide-motorgroup = "1.0.0"
+//! ```
+//!
+//! Or if you prefer the command line:
+//!
+//! ```sh
+//! cargo add vexide-motorgroup
+//! ```
+//!
+//! ## Usage
+//!
+//! Normally, you would have to set each motor's target and other values
+//! individually even if the motors were physically connected in a drivetrain or
+//! similar, but with `MotorGroup`, you can control them as if they were one motor.
+//!
+//! Just create a `MotorGroup` with a `Vec` of `Motor`s and use the `MotorGroup`
+//! methods just like you would with a `Motor`. It's that simple!
+//!
+//! ```rust
+//! #![no_std]
+//! #![no_main]
+//!
+//! extern crate alloc;
+//!
+//! use core::time::Duration;
+//!
+//! use alloc::vec;
+//! use vexide_motorgroup::MotorGroup;
+//!
+//! use vexide::prelude::*;
+//!
+//! #[vexide::main]
+//! async fn main(peripherals: Peripherals) {
+//!     // Here's where the magic happens
+//!     let mut motor_group = MotorGroup::new(vec![
+//!         Motor::new(peripherals.port_1, Gearset::Green, Direction::Forward),
+//!         Motor::new(peripherals.port_2, Gearset::Green, Direction::Forward),
+//!     ]);
+//!
+//!     // Set the motor group's target to a voltage as if it were a motor
+//!     motor_group.set_voltage(5.0).unwrap();
+//!     sleep(Duration::from_secs(1)).await;
+//!
+//!     // Set the motor group's target to a position
+//!     motor_group
+//!         .set_position_target(Position::from_degrees(90.0), 200)
+//!         .unwrap();
+//!     sleep(Duration::from_secs(1)).await;
+//!
+//!     // Set the motor group's target to a velocity
+//!     motor_group.set_velocity(100).unwrap();
+//!     sleep(Duration::from_secs(1)).await;
+//!
+//!     // Brake the motor group
+//!     motor_group.brake(BrakeMode::Hold).unwrap();
+//! }
+//! ```
+
 #![no_std]
 
 extern crate alloc;
