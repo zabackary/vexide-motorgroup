@@ -1,0 +1,27 @@
+[package]
+name = "vexide-motorgroup"
+description = "Motor groups for vexide in userland."
+repository = "https://github.com/zabackary/vexide-motorgroup/"
+authors = ["zabackary"]
+license-file = "LICENSE.md"
+keywords = ["vex", "vexide", "vex-robotics", "robotics", "motorgroup"]
+version = "1.0.0"
+edition = "2021"
+
+[package.metadata.v5]
+upload-strategy = "differential"
+slot = 1
+icon = "cool-x"
+compress = true
+
+[package.metadata.docs.rs]
+targets = ["armv7a-none-eabi"]
+
+[dependencies]
+vexide = { version = "0.7.0-beta.3", default-features = false, features = [
+  "core",
+  "devices",
+] }
+
+[dev-dependencies]
+vexide = "0.7.0-beta.3"
