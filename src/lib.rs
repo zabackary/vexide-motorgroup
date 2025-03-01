@@ -88,6 +88,75 @@ use vexide::{
 #[derive(Debug)]
 pub struct MotorGroup(Vec<Motor>);
 
+/// An error that occurs when controlling a motor group.
+///
+/// This error is returned when an individual motor in the group encounters an
+/// error. The error contains a list of all the errors that occurred.
+///
+/// A MotorGroupError is guaranteed to have at least one error in it.
+///
+/// MotorGroupError also implements `Into<MotorError>`, which will return the
+/// first error that occurred. This means that you can use the `?` operator
+/// with a `MotorGroupError` to return a `MotorError` to a result.
+#[derive(Debug)]
+#[non_exhaustive]
+pub struct MotorGroupError {
+    pub errors: Vec<MotorError>,
+}
+
+impl MotorGroupError {
+    /// Creates a new motor group error from a `Vec` of motor errors.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the errors vector is empty.
+    pub(crate) fn new(errors: Vec<MotorError>) -> Self {
+        if errors.is_empty() {
+            panic!("Cannot create a MotorGroupError with no errors");
+        }
+        Self { errors }
+    }
+
+    /// The first error that occurred in the motor group.
+    pub fn first(&self) -> &MotorError {
+        &self.errors[0]
+    }
+
+    /// Whether the motor group has a busy error.
+    ///
+    /// A busy error occurs when communication with a motor is not possible
+    /// when reading flags.
+    pub fn has_busy_error(&self) -> bool {
+        self.errors
+            .iter()
+            .any(|error| matches!(error, MotorError::Busy))
+    }
+
+    /// Whether the motor group has a port error.
+    ///
+    /// A port error occurs when a motor is not currently connected to a Smart
+    /// Port.
+    pub fn has_port_error(&self) -> bool {
+        self.errors
+            .iter()
+            .any(|error| matches!(error, MotorError::Port { source: _ }))
+    }
+}
+
+impl From<MotorGroupError> for MotorError {
+    fn from(error: MotorGroupError) -> Self {
+        error.errors.into_iter().next().unwrap()
+    }
+}
+
+impl core::fmt::Display for MotorGroupError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "error(s) in MotorGroup: {:?}", self.errors)
+    }
+}
+
+impl core::error::Error for MotorGroupError {}
+
 impl MotorGroup {
     /// Creates a new motor group from a vector of motors.
     ///
@@ -142,11 +211,18 @@ impl MotorGroup {
     /// ```
     ///
     /// See the original method [here](https://docs.rs/vexide/latest/vexide/devices/smart/struct.Motor.html#method.set_target).
-    pub fn set_target(&mut self, target: MotorControl) -> Result<(), MotorError> {
+    pub fn set_target(&mut self, target: MotorControl) -> Result<(), MotorGroupError> {
+        let mut errors = Vec::new();
         for motor in &mut self.0 {
-            motor.set_target(target)?;
+            if let Err(error) = motor.set_target(target) {
+                errors.push(error);
+            }
         }
-        Ok(())
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(MotorGroupError::new(errors))
+        }
     }
 
     /// Sets the motor group's target to a given [`BrakeMode`].
@@ -171,11 +247,18 @@ impl MotorGroup {
     /// ```
     ///
     /// See the original method [here](https://docs.rs/vexide/latest/vexide/devices/smart/struct.Motor.html#method.brake).
-    pub fn brake(&mut self, mode: BrakeMode) -> Result<(), MotorError> {
+    pub fn brake(&mut self, mode: BrakeMode) -> Result<(), MotorGroupError> {
+        let mut errors = Vec::new();
         for motor in &mut self.0 {
-            motor.brake(mode)?;
+            if let Err(error) = motor.brake(mode) {
+                errors.push(error);
+            }
         }
-        Ok(())
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(MotorGroupError::new(errors))
+        }
     }
 
     /// Spins the motor group at a target velocity.
@@ -207,11 +290,18 @@ impl MotorGroup {
     /// ```
     ///
     /// See the original method [here](https://docs.rs/vexide/latest/vexide/devices/smart/struct.Motor.html#method.set_velocity).
-    pub fn set_velocity(&mut self, rpm: i32) -> Result<(), MotorError> {
+    pub fn set_velocity(&mut self, rpm: i32) -> Result<(), MotorGroupError> {
+        let mut errors = Vec::new();
         for motor in &mut self.0 {
-            motor.set_velocity(rpm)?;
+            if let Err(error) = motor.set_velocity(rpm) {
+                errors.push(error);
+            }
         }
-        Ok(())
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(MotorGroupError::new(errors))
+        }
     }
 
     /// Sets the motor group's output voltage.
@@ -261,11 +351,18 @@ impl MotorGroup {
     /// ```
     ///
     /// See the original method [here](https://docs.rs/vexide/latest/vexide/devices/smart/struct.Motor.html#method.set_voltage).
-    pub fn set_voltage(&mut self, volts: f64) -> Result<(), MotorError> {
+    pub fn set_voltage(&mut self, volts: f64) -> Result<(), MotorGroupError> {
+        let mut errors = Vec::new();
         for motor in &mut self.0 {
-            motor.set_voltage(volts)?;
+            if let Err(error) = motor.set_voltage(volts) {
+                errors.push(error);
+            }
         }
-        Ok(())
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(MotorGroupError::new(errors))
+        }
     }
 
     /// Sets an absolute position target for the motor group to attempt to reach.
@@ -295,11 +392,18 @@ impl MotorGroup {
         &mut self,
         position: Position,
         velocity: i32,
-    ) -> Result<(), MotorError> {
+    ) -> Result<(), MotorGroupError> {
+        let mut errors = Vec::new();
         for motor in &mut self.0 {
-            motor.set_position_target(position, velocity)?;
+            if let Err(error) = motor.set_position_target(position, velocity) {
+                errors.push(error);
+            }
         }
-        Ok(())
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(MotorGroupError::new(errors))
+        }
     }
 
     /// Changes the output velocity for a profiled movement (motor_move_absolute or motor_move_relative).
@@ -328,11 +432,18 @@ impl MotorGroup {
     /// ```
     ///
     /// See the original method [here](https://docs.rs/vexide/latest/vexide/devices/smart/struct.Motor.html#method.set_profiled_velocity).
-    pub fn set_profiled_velocity(&mut self, velocity: i32) -> Result<(), MotorError> {
+    pub fn set_profiled_velocity(&mut self, velocity: i32) -> Result<(), MotorGroupError> {
+        let mut errors = Vec::new();
         for motor in &mut self.0 {
-            motor.set_profiled_velocity(velocity)?;
+            if let Err(error) = motor.set_profiled_velocity(velocity) {
+                errors.push(error);
+            }
         }
-        Ok(())
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(MotorGroupError::new(errors))
+        }
     }
 
     /// Sets the gearset of an 11W motor group.
@@ -361,11 +472,18 @@ impl MotorGroup {
     /// ```
     ///
     /// See the original method [here](https://docs.rs/vexide/latest/vexide/devices/smart/struct.Motor.html#method.set_gearset).
-    pub fn set_gearset(&mut self, gearset: Gearset) -> Result<(), MotorError> {
+    pub fn set_gearset(&mut self, gearset: Gearset) -> Result<(), MotorGroupError> {
+        let mut errors = Vec::new();
         for motor in &mut self.0 {
-            motor.set_gearset(gearset)?;
+            if let Err(error) = motor.set_gearset(gearset) {
+                errors.push(error);
+            }
         }
-        Ok(())
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(MotorGroupError::new(errors))
+        }
     }
 
     /// Returns `true` if the motor group has a 5.5W (EXP) Smart Motor.
@@ -431,10 +549,14 @@ impl MotorGroup {
     ///
     /// See the original method [here](https://docs.rs/vexide/latest/vexide/devices/smart/struct.Motor.html#method.max_voltage).
     pub fn max_voltage(&self) -> f64 {
-        self.0.iter().map(|motor| motor.max_voltage()).sum::<f64>() / self.0.len() as f64
+        self.0
+            .iter()
+            .map(|motor| motor.max_voltage())
+            .reduce(f64::max)
+            .unwrap()
     }
 
-    /// Returns the motor group's estimate of its angular velocity in rotations per minute (RPM).
+    /// Returns the average estimated angular velocity of motors in a motor group in rotations per minute (RPM).
     ///
     /// # Accuracy
     ///
@@ -451,7 +573,7 @@ impl MotorGroup {
     ///
     /// # Errors
     ///
-    /// - A [`MotorError::Port`] error is returned if a motor device is not currently connected to the Smart Port.
+    /// - A [`MotorGroupError`] error is returned if any motor in the group encounters an error.
     ///
     /// # Examples
     ///
@@ -499,22 +621,31 @@ impl MotorGroup {
     /// ```
     ///
     /// See the original method [here](https://docs.rs/vexide/latest/vexide/devices/smart/struct.Motor.html#method.velocity).
-    pub fn velocity(&self) -> Result<f64, MotorError> {
-        let sum: f64 = self
-            .0
-            .iter()
-            .map(|motor| motor.velocity())
-            .collect::<Result<Vec<_>, _>>()?
-            .iter()
-            .sum();
-        Ok(sum / self.0.len() as f64)
+    pub fn velocity(&self) -> Result<f64, MotorGroupError> {
+        let mut errors = Vec::new();
+        let mut sum = 0.0;
+        let mut count = 0;
+        for motor in &self.0 {
+            match motor.velocity() {
+                Ok(velocity) => {
+                    sum += velocity;
+                    count += 1;
+                }
+                Err(error) => errors.push(error),
+            }
+        }
+        if errors.is_empty() {
+            Ok(sum / count as f64)
+        } else {
+            Err(MotorGroupError::new(errors))
+        }
     }
 
-    /// Returns the power drawn by the motor group in Watts.
+    /// Returns the average power drawn by a motor in this the motor group in Watts.
     ///
     /// # Errors
     ///
-    /// - A [`MotorError::Port`] error is returned if a motor device is not currently connected to the Smart Port.
+    /// - A [`MotorGroupError`] error is returned if any motor in the group encounters an error.
     ///
     /// # Examples
     ///
@@ -534,22 +665,31 @@ impl MotorGroup {
     /// ```
     ///
     /// See the original method [here](https://docs.rs/vexide/latest/vexide/devices/smart/struct.Motor.html#method.power).
-    pub fn power(&self) -> Result<f64, MotorError> {
-        let sum: f64 = self
-            .0
-            .iter()
-            .map(|motor| motor.power())
-            .collect::<Result<Vec<_>, _>>()?
-            .iter()
-            .sum();
-        Ok(sum / self.0.len() as f64)
+    pub fn power(&self) -> Result<f64, MotorGroupError> {
+        let mut errors = Vec::new();
+        let mut sum = 0.0;
+        let mut count = 0;
+        for motor in &self.0 {
+            match motor.power() {
+                Ok(power) => {
+                    sum += power;
+                    count += 1;
+                }
+                Err(error) => errors.push(error),
+            }
+        }
+        if errors.is_empty() {
+            Ok(sum / count as f64)
+        } else {
+            Err(MotorGroupError::new(errors))
+        }
     }
 
-    /// Returns the torque of the motor group in Newton-meters.
+    /// Returns the average torque of motors in the motor group in Newton-meters.
     ///
     /// # Errors
     ///
-    /// - A [`MotorError::Port`] error is returned if a motor device is not currently connected to the Smart Port.
+    /// - A [`MotorGroupError`] error is returned if any motor in the group encounters an error.
     ///
     /// # Examples
     ///
@@ -569,22 +709,31 @@ impl MotorGroup {
     /// ```
     ///
     /// See the original method [here](https://docs.rs/vexide/latest/vexide/devices/smart/struct.Motor.html#method.torque).
-    pub fn torque(&self) -> Result<f64, MotorError> {
-        let sum: f64 = self
-            .0
-            .iter()
-            .map(|motor| motor.torque())
-            .collect::<Result<Vec<_>, _>>()?
-            .iter()
-            .sum();
-        Ok(sum / self.0.len() as f64)
+    pub fn torque(&self) -> Result<f64, MotorGroupError> {
+        let mut errors = Vec::new();
+        let mut sum = 0.0;
+        let mut count = 0;
+        for motor in &self.0 {
+            match motor.torque() {
+                Ok(torque) => {
+                    sum += torque;
+                    count += 1;
+                }
+                Err(error) => errors.push(error),
+            }
+        }
+        if errors.is_empty() {
+            Ok(sum / count as f64)
+        } else {
+            Err(MotorGroupError::new(errors))
+        }
     }
 
     /// Returns the motor group's output voltage.
     ///
     /// # Errors
     ///
-    /// - A [`MotorError::Port`] error is returned if a motor device is not currently connected to the Smart Port.
+    /// - A [`MotorGroupError`] error is returned if any motor in the group encounters an error.
     ///
     /// # Examples
     ///
@@ -604,22 +753,31 @@ impl MotorGroup {
     /// ```
     ///
     /// See the original method [here](https://docs.rs/vexide/latest/vexide/devices/smart/struct.Motor.html#method.voltage).
-    pub fn voltage(&self) -> Result<f64, MotorError> {
-        let sum: f64 = self
-            .0
-            .iter()
-            .map(|motor| motor.voltage())
-            .collect::<Result<Vec<_>, _>>()?
-            .iter()
-            .sum();
-        Ok(sum / self.0.len() as f64)
+    pub fn voltage(&self) -> Result<f64, MotorGroupError> {
+        let mut errors = Vec::new();
+        let mut sum = 0.0;
+        let mut count = 0;
+        for motor in &self.0 {
+            match motor.voltage() {
+                Ok(voltage) => {
+                    sum += voltage;
+                    count += 1;
+                }
+                Err(error) => errors.push(error),
+            }
+        }
+        if errors.is_empty() {
+            Ok(sum / count as f64)
+        } else {
+            Err(MotorGroupError::new(errors))
+        }
     }
 
-    /// Returns the motor group's position in ticks.
+    /// Returns the motor group's average position in ticks.
     ///
     /// # Errors
     ///
-    /// - A [`MotorError::Port`] error is returned if a motor device is not currently connected to the Smart Port.
+    /// - A [`MotorGroupError`] error is returned if any motor in the group encounters an error.
     ///
     /// # Examples
     ///
@@ -639,19 +797,31 @@ impl MotorGroup {
     /// ```
     ///
     /// See the original method [here](https://docs.rs/vexide/latest/vexide/devices/smart/struct.Motor.html#method.position).
-    pub fn position(&self) -> Result<Position, MotorError> {
+    pub fn position(&self) -> Result<Position, MotorGroupError> {
+        let mut errors = Vec::new();
         let mut sum = Position::from_ticks(0, 36000);
+        let mut count = 0;
         for motor in &self.0 {
-            sum += motor.position()?;
+            match motor.position() {
+                Ok(position) => {
+                    sum += position;
+                    count += 1;
+                }
+                Err(error) => errors.push(error),
+            }
         }
-        Ok(sum / self.0.len() as i64)
+        if errors.is_empty() {
+            Ok(sum / count as i64)
+        } else {
+            Err(MotorGroupError::new(errors))
+        }
     }
 
-    /// Returns the motor group's current in Amperes.
+    /// Returns the motor group's average current in Amperes.
     ///
     /// # Errors
     ///
-    /// - A [`MotorError::Port`] error is returned if a motor device is not currently connected to the Smart Port.
+    /// - A [`MotorGroupError`] error is returned if any motor in the group encounters an error.
     ///
     /// # Examples
     ///
@@ -671,22 +841,31 @@ impl MotorGroup {
     /// ```
     ///
     /// See the original method [here](https://docs.rs/vexide/latest/vexide/devices/smart/struct.Motor.html#method.current).
-    pub fn current(&self) -> Result<f64, MotorError> {
-        let sum: f64 = self
-            .0
-            .iter()
-            .map(|motor| motor.current())
-            .collect::<Result<Vec<_>, _>>()?
-            .iter()
-            .sum();
-        Ok(sum / self.0.len() as f64)
+    pub fn current(&self) -> Result<f64, MotorGroupError> {
+        let mut errors = Vec::new();
+        let mut sum = 0.0;
+        let mut count = 0;
+        for motor in &self.0 {
+            match motor.current() {
+                Ok(current) => {
+                    sum += current;
+                    count += 1;
+                }
+                Err(error) => errors.push(error),
+            }
+        }
+        if errors.is_empty() {
+            Ok(sum / count as f64)
+        } else {
+            Err(MotorGroupError::new(errors))
+        }
     }
 
-    /// Returns the motor group's efficiency as a percentage.
+    /// Returns the motor group's average efficiency as a percentage.
     ///
     /// # Errors
     ///
-    /// - A [`MotorError::Port`] error is returned if a motor device is not currently connected to the Smart Port.
+    /// - A [`MotorGroupError`] error is returned if any motor in the group encounters an error.
     ///
     /// # Examples
     ///
@@ -706,18 +885,27 @@ impl MotorGroup {
     /// ```
     ///
     /// See the original method [here](https://docs.rs/vexide/latest/vexide/devices/smart/struct.Motor.html#method.efficiency).
-    pub fn efficiency(&self) -> Result<f64, MotorError> {
-        let sum: f64 = self
-            .0
-            .iter()
-            .map(|motor| motor.efficiency())
-            .collect::<Result<Vec<_>, _>>()?
-            .iter()
-            .sum();
-        Ok(sum / self.0.len() as f64)
+    pub fn efficiency(&self) -> Result<f64, MotorGroupError> {
+        let mut errors = Vec::new();
+        let mut sum = 0.0;
+        let mut count = 0;
+        for motor in &self.0 {
+            match motor.efficiency() {
+                Ok(efficiency) => {
+                    sum += efficiency;
+                    count += 1;
+                }
+                Err(error) => errors.push(error),
+            }
+        }
+        if errors.is_empty() {
+            Ok(sum / count as f64)
+        } else {
+            Err(MotorGroupError::new(errors))
+        }
     }
 
-    /// Resets the motor group's position to zero.
+    /// Resets every motor in the motor group's position to zero.
     ///
     /// # Errors
     ///
@@ -741,11 +929,18 @@ impl MotorGroup {
     /// ```
     ///
     /// See the original method [here](https://docs.rs/vexide/latest/vexide/devices/smart/struct.Motor.html#method.reset_position).
-    pub fn reset_position(&mut self) -> Result<(), MotorError> {
+    pub fn reset_position(&mut self) -> Result<(), MotorGroupError> {
+        let mut errors = Vec::new();
         for motor in &mut self.0 {
-            motor.reset_position()?;
+            if let Err(error) = motor.reset_position() {
+                errors.push(error);
+            }
         }
-        Ok(())
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(MotorGroupError::new(errors))
+        }
     }
 
     /// Sets the motor group's position to a given value.
@@ -772,11 +967,18 @@ impl MotorGroup {
     /// ```
     ///
     /// See the original method [here](https://docs.rs/vexide/latest/vexide/devices/smart/struct.Motor.html#method.set_position).
-    pub fn set_position(&mut self, position: Position) -> Result<(), MotorError> {
+    pub fn set_position(&mut self, position: Position) -> Result<(), MotorGroupError> {
+        let mut errors = Vec::new();
         for motor in &mut self.0 {
-            motor.set_position(position)?;
+            if let Err(error) = motor.set_position(position) {
+                errors.push(error);
+            }
         }
-        Ok(())
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(MotorGroupError::new(errors))
+        }
     }
 
     /// Sets the motor group's current limit in Amperes.
@@ -803,11 +1005,18 @@ impl MotorGroup {
     /// ```
     ///
     /// See the original method [here](https://docs.rs/vexide/latest/vexide/devices/smart/struct.Motor.html#method.set_current_limit).
-    pub fn set_current_limit(&mut self, limit: f64) -> Result<(), MotorError> {
+    pub fn set_current_limit(&mut self, limit: f64) -> Result<(), MotorGroupError> {
+        let mut errors = Vec::new();
         for motor in &mut self.0 {
-            motor.set_current_limit(limit)?;
+            if let Err(error) = motor.set_current_limit(limit) {
+                errors.push(error);
+            }
         }
-        Ok(())
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(MotorGroupError::new(errors))
+        }
     }
 
     /// Sets the motor group's voltage limit in Volts.
@@ -834,18 +1043,25 @@ impl MotorGroup {
     /// ```
     ///
     /// See the original method [here](https://docs.rs/vexide/latest/vexide/devices/smart/struct.Motor.html#method.set_voltage_limit).
-    pub fn set_voltage_limit(&mut self, limit: f64) -> Result<(), MotorError> {
+    pub fn set_voltage_limit(&mut self, limit: f64) -> Result<(), MotorGroupError> {
+        let mut errors = Vec::new();
         for motor in &mut self.0 {
-            motor.set_voltage_limit(limit)?;
+            if let Err(error) = motor.set_voltage_limit(limit) {
+                errors.push(error);
+            }
         }
-        Ok(())
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(MotorGroupError::new(errors))
+        }
     }
 
     /// Returns the motor group's temperature in degrees Celsius.
     ///
     /// # Errors
     ///
-    /// - A [`MotorError::Port`] error is returned if a motor device is not currently connected to the Smart Port.
+    /// - A [`MotorGroupError`] error is returned if any motor in the group encounters an error.
     ///
     /// # Examples
     ///
@@ -865,22 +1081,31 @@ impl MotorGroup {
     /// ```
     ///
     /// See the original method [here](https://docs.rs/vexide/latest/vexide/devices/smart/struct.Motor.html#method.temperature).
-    pub fn temperature(&self) -> Result<f64, MotorError> {
-        let sum: f64 = self
-            .0
-            .iter()
-            .map(|motor| motor.temperature())
-            .collect::<Result<Vec<_>, _>>()?
-            .iter()
-            .sum();
-        Ok(sum / self.0.len() as f64)
+    pub fn temperature(&self) -> Result<f64, MotorGroupError> {
+        let mut errors = Vec::new();
+        let mut sum = 0.0;
+        let mut count = 0;
+        for motor in &self.0 {
+            match motor.temperature() {
+                Ok(temperature) => {
+                    sum += temperature;
+                    count += 1;
+                }
+                Err(error) => errors.push(error),
+            }
+        }
+        if errors.is_empty() {
+            Ok(sum / count as f64)
+        } else {
+            Err(MotorGroupError::new(errors))
+        }
     }
 
-    /// Returns `true` if the motor group is over temperature.
+    /// Returns `true` if any motor in the motor group is over temperature.
     ///
     /// # Errors
     ///
-    /// - A [`MotorError::Port`] error is returned if a motor device is not currently connected to the Smart Port.
+    /// - A [`MotorGroupError`] error is returned if any motor encounters an error.
     ///
     /// # Examples
     ///
@@ -900,20 +1125,27 @@ impl MotorGroup {
     /// ```
     ///
     /// See the original method [here](https://docs.rs/vexide/latest/vexide/devices/smart/struct.Motor.html#method.is_over_temperature).
-    pub fn is_over_temperature(&self) -> Result<bool, MotorError> {
+    pub fn is_over_temperature(&self) -> Result<bool, MotorGroupError> {
+        let mut errors = Vec::new();
         for motor in &self.0 {
-            if motor.is_over_temperature()? {
-                return Ok(true);
+            match motor.is_over_temperature() {
+                Ok(true) => return Ok(true),
+                Err(error) => errors.push(error),
+                _ => {}
             }
         }
-        Ok(false)
+        if errors.is_empty() {
+            Ok(false)
+        } else {
+            Err(MotorGroupError::new(errors))
+        }
     }
 
-    /// Returns `true` if the motor group is over current.
+    /// Returns `true` if any motor in the motor group is over current.
     ///
     /// # Errors
     ///
-    /// - A [`MotorError::Port`] error is returned if a motor device is not currently connected to the Smart Port.
+    /// - A [`MotorGroupError`] error is returned if any motor encounters an error.
     ///
     /// # Examples
     ///
@@ -933,20 +1165,27 @@ impl MotorGroup {
     /// ```
     ///
     /// See the original method [here](https://docs.rs/vexide/latest/vexide/devices/smart/struct.Motor.html#method.is_over_current).
-    pub fn is_over_current(&self) -> Result<bool, MotorError> {
+    pub fn is_over_current(&self) -> Result<bool, MotorGroupError> {
+        let mut errors = Vec::new();
         for motor in &self.0 {
-            if motor.is_over_current()? {
-                return Ok(true);
+            match motor.is_over_current() {
+                Ok(true) => return Ok(true),
+                Err(error) => errors.push(error),
+                _ => {}
             }
         }
-        Ok(false)
+        if errors.is_empty() {
+            Ok(false)
+        } else {
+            Err(MotorGroupError::new(errors))
+        }
     }
 
-    /// Returns `true` if the motor group has a driver fault.
+    /// Returns `true` if any motor in the motor group has a driver fault.
     ///
     /// # Errors
     ///
-    /// - A [`MotorError::Port`] error is returned if a motor device is not currently connected to the Smart Port.
+    /// - A [`MotorGroupError`] error is returned if any motor encounters an error.
     ///
     /// # Examples
     ///
@@ -966,20 +1205,27 @@ impl MotorGroup {
     /// ```
     ///
     /// See the original method [here](https://docs.rs/vexide/latest/vexide/devices/smart/struct.Motor.html#method.is_driver_fault).
-    pub fn is_driver_fault(&self) -> Result<bool, MotorError> {
+    pub fn is_driver_fault(&self) -> Result<bool, MotorGroupError> {
+        let mut errors = Vec::new();
         for motor in &self.0 {
-            if motor.is_driver_fault()? {
-                return Ok(true);
+            match motor.is_driver_fault() {
+                Ok(true) => return Ok(true),
+                Err(error) => errors.push(error),
+                _ => {}
             }
         }
-        Ok(false)
+        if errors.is_empty() {
+            Ok(false)
+        } else {
+            Err(MotorGroupError::new(errors))
+        }
     }
 
-    /// Returns `true` if the motor group is over current.
+    /// Returns `true` if the any motor in the motor group is over current.
     ///
     /// # Errors
     ///
-    /// - A [`MotorError::Port`] error is returned if a motor device is not currently connected to the Smart Port.
+    /// - A [`MotorGroupError`] error is returned if any motor encounters an error.
     ///
     /// # Examples
     ///
@@ -999,13 +1245,20 @@ impl MotorGroup {
     /// ```
     ///
     /// See the original method [here](https://docs.rs/vexide/latest/vexide/devices/smart/struct.Motor.html#method.is_driver_over_current).
-    pub fn is_driver_over_current(&self) -> Result<bool, MotorError> {
+    pub fn is_driver_over_current(&self) -> Result<bool, MotorGroupError> {
+        let mut errors = Vec::new();
         for motor in &self.0 {
-            if motor.is_driver_over_current()? {
-                return Ok(true);
+            match motor.is_driver_over_current() {
+                Ok(true) => return Ok(true),
+                Err(error) => errors.push(error),
+                _ => {}
             }
         }
-        Ok(false)
+        if errors.is_empty() {
+            Ok(false)
+        } else {
+            Err(MotorGroupError::new(errors))
+        }
     }
 
     /// Sets the motor group's direction.
@@ -1032,10 +1285,17 @@ impl MotorGroup {
     /// ```
     ///
     /// See the original method [here](https://docs.rs/vexide/latest/vexide/devices/smart/struct.Motor.html#method.set_direction).
-    pub fn set_direction(&mut self, direction: Direction) -> Result<(), MotorError> {
+    pub fn set_direction(&mut self, direction: Direction) -> Result<(), MotorGroupError> {
+        let mut errors = Vec::new();
         for motor in &mut self.0 {
-            motor.set_direction(direction)?;
+            if let Err(error) = motor.set_direction(direction) {
+                errors.push(error);
+            }
         }
-        Ok(())
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(MotorGroupError::new(errors))
+        }
     }
 }
