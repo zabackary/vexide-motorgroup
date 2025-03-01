@@ -10,8 +10,8 @@
 //!
 //! ```toml
 //! [dependencies]
-//! // ... other dependencies
-//! vexide-motorgroup = "1.0.0"
+//! # ... other dependencies
+//! vexide-motorgroup = "2.0.0"
 //! ```
 //!
 //! Or if you prefer the command line:
