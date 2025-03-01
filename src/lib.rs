@@ -11,7 +11,7 @@
 //! ```toml
 //! [dependencies]
 //! # ... other dependencies
-//! vexide-motorgroup = "2.0.0"
+//! vexide-motorgroup = "2.0.1"
 //! ```
 //!
 //! Or if you prefer the command line:
