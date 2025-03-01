@@ -6,7 +6,7 @@ authors = ["zabackary"]
 license = "MIT"
 license-file = "LICENSE.md"
 keywords = ["vex", "vexide", "vex-robotics", "robotics", "motorgroup"]
-version = "1.0.1"
+version = "2.0.0"
 edition = "2021"
 
 [package.metadata.v5]
