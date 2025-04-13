@@ -18,7 +18,7 @@ Add the following to your `Cargo.toml`:
 ```toml
 [dependencies]
 # ... other dependencies
-vexide-motorgroup = "2.0.1"
+vexide-motorgroup = "2.1.0"
 ```
 
 Or if you prefer the command line:
@@ -75,3 +75,26 @@ async fn main(peripherals: Peripherals) {
     motor_group.brake(BrakeMode::Hold).unwrap();
 }
 ```
+
+## Error handling
+
+### Read errors
+
+For functions returning values and reading data (i.e., those taking a read-only
+reference to self), upon encountering an error accessing any motor, the result
+will be a MotorGroupError that contains all the errors encountered during the
+operation. Using
+[`MotorGroupError::result`](https://docs.rs/vexide-motorgroup/latest/vexide_motorgroup/struct.MotorGroupError.html#method.result)
+will return the average of all the results that were successfully read.
+
+### Write errors
+
+vexide-motorgroup provides two different strategies for handling write errors.
+Both of them will return an `Err` when any motor returns an error.
+
+1. [`WriteErrorStrategy::Ignore`](https://docs.rs/vexide-motorgroup/latest/vexide_motorgroup/enum.WriteErrorStrategy.html#variant.Ignore)
+   (default): This strategy will ignore errors and continue writing to the other
+   motors.
+2. [`WriteErrorStrategy::Stop`](https://docs.rs/vexide-motorgroup/latest/vexide_motorgroup/enum.WriteErrorStrategy.html#variant.Stop):
+   This strategy will stop writing to the other motors and return the error
+   immediately.
