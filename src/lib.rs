@@ -38,7 +38,7 @@
 //! use core::time::Duration;
 //!
 //! use alloc::vec;
-//! use vexide_motorgroup::MotorGroup;
+//! use vexide_motorgroup::*;
 //!
 //! use vexide::prelude::*;
 //!
@@ -68,25 +68,41 @@
 //!     motor_group.brake(BrakeMode::Hold).unwrap();
 //! }
 //! ```
+//!
+//! ## Error handling
+//!
+//! ### Read errors
+//!
+//! For functions returning values and reading data (i.e., those taking a
+//! read-only reference to self), upon encountering an error accessing any
+//! motor, the result will be a MotorGroupError that contains all the errors
+//! encountered during the operation. Using [`MotorGroupError::result`] will
+//! return the average of all the results that were successfully read.
+//!
+//! ### Write errors
+//!
+//! vexide-motorgroup provides two different strategies for handling write
+//! errors. Both of them will return an `Err` when any motor returns an error.
+//!
+//! 1. [`WriteErrorStrategy::Ignore`] (default): This strategy will ignore
+//!    errors and continue writing to the other motors.
+//! 2. [`WriteErrorStrategy::Stop`]: This strategy will stop writing to the
+//!    other motors and return the error immediately.
 
 #![no_std]
 
 extern crate alloc;
+
+mod macros;
+mod shared_motors;
+
+pub use shared_motors::SharedMotors;
 
 use alloc::vec::Vec;
 use vexide::{
     devices::smart::{motor::MotorError, Motor},
     prelude::{BrakeMode, Direction, Gearset, MotorControl, Position},
 };
-
-/// A group of motors that can be controlled together.
-///
-/// This is a simple wrapper around a vector of motors, with methods to easily
-/// control all motors in the group at once as if they were a single motor.
-///
-/// A motor group is guaranteed to have at least one motor in it.
-#[derive(Debug)]
-pub struct MotorGroup(Vec<Motor>);
 
 /// An error that occurs when controlling a motor group.
 ///
@@ -100,21 +116,59 @@ pub struct MotorGroup(Vec<Motor>);
 /// with a `MotorGroupError` to return a `MotorError` to a result.
 #[derive(Debug)]
 #[non_exhaustive]
-pub struct MotorGroupError {
+pub struct MotorGroupError<T = ()> {
     pub errors: Vec<MotorError>,
+    pub result: Option<T>,
 }
 
-impl MotorGroupError {
+impl MotorGroupError<()> {
     /// Creates a new motor group error from a `Vec` of motor errors.
     ///
     /// # Panics
     ///
     /// Panics if the errors vector is empty.
     pub(crate) fn new(errors: Vec<MotorError>) -> Self {
-        if errors.is_empty() {
-            panic!("Cannot create a MotorGroupError with no errors");
+        assert!(
+            !errors.is_empty(),
+            "Cannot create a MotorGroupError with no errors"
+        );
+        Self {
+            errors,
+            result: None,
         }
-        Self { errors }
+    }
+}
+
+impl<T> MotorGroupError<T> {
+    pub(crate) fn with_result(errors: Vec<MotorError>, result: T) -> Self {
+        assert!(
+            !errors.is_empty(),
+            "Cannot create a MotorGroupError with no errors"
+        );
+        Self {
+            errors,
+            result: Some(result),
+        }
+    }
+
+    pub(crate) fn with_empty_result(errors: Vec<MotorError>) -> Self {
+        assert!(
+            !errors.is_empty(),
+            "Cannot create a MotorGroupError with no errors"
+        );
+        Self {
+            errors,
+            result: None,
+        }
+    }
+
+    /// Returns the result of the motor group error.
+    ///
+    /// For getters that return a result, this is the value that would be returned
+    /// if there were no errors. It is usually an average of the available data.
+    /// If all motors in the group return an error, this will be None.
+    pub fn result(&self) -> &Option<T> {
+        &self.result
     }
 
     /// The first error that occurred in the motor group.
@@ -157,13 +211,59 @@ impl core::fmt::Display for MotorGroupError {
 
 impl core::error::Error for MotorGroupError {}
 
-impl MotorGroup {
+/// The mode for handling errors when writing to a motor group.
+///
+/// This is used to determine how to handle errors when writing to a motor group.
+/// "Writing" means doing things like setting a target, setting a voltage,
+/// setting a gearset, etc.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum WriteErrorStrategy {
+    /// Ignore errors and continue writing.
+    ///
+    /// This means that if a motor is, for example, unplugged, then writes to
+    /// other plugged in motors will still be attempted. You should use this
+    /// mode for most places where redundancy is practiced. Note that methods will
+    /// still return an `Err` variant when an error occurs even if some writes
+    /// succeed.
+    ///
+    /// This is the default mode.
+    #[default]
+    Ignore,
+    /// Stop writing on the first error and return early.
+    ///
+    /// This means that if a motor encounters an error, no further writes will
+    /// be attempted, and the error will be returned immediately. This is useful
+    /// for debugging or when you want to ensure that all motors are in a valid
+    /// state at all times (e.g. a subsystem should either 100% work or not work
+    /// at all.)
+    Stop,
+}
+
+/// A group of motors that can be controlled together.
+///
+/// This is a simple wrapper around a vector of motors, with methods to easily
+/// control all motors in the group at once as if they were a single motor.
+///
+/// A motor group is guaranteed to have at least one motor in it.
+#[derive(Debug)]
+pub struct MotorGroup<M: AsRef<[Motor]> + AsMut<[Motor]> = Vec<Motor>> {
+    pub(crate) motors: M,
+    write_error_strategy: WriteErrorStrategy,
+}
+
+type GetterResult<T> = Result<T, MotorGroupError<T>>;
+
+impl<M: AsRef<[Motor]> + AsMut<[Motor]>> MotorGroup<M> {
     /// Creates a new motor group from a vector of motors.
+    ///
+    /// You can set the write handling mode afterwards by calling
+    /// [`write_error_handling_mode`].
     ///
     /// # Examples
     ///
     /// ```
     /// use vexide::prelude::*;
+    /// use vexide_motorgroup::*;
     ///
     /// #[vexide::main]
     /// async fn main(peripherals: Peripherals) {
@@ -178,11 +278,31 @@ impl MotorGroup {
     /// # Panics
     ///
     /// Panics if there are no motors in the vector.
-    pub fn new(motors: Vec<Motor>) -> Self {
-        if motors.is_empty() {
-            panic!("Cannot create a motor group with no motors");
+    pub fn new(motors: M) -> Self {
+        assert!(
+            !motors.as_ref().is_empty(),
+            "Cannot create a motor group with no motors"
+        );
+        Self {
+            motors,
+            write_error_strategy: WriteErrorStrategy::default(),
         }
-        Self(motors)
+    }
+
+    /// Sets the write error handling strategy for the motor group.
+    ///
+    /// This determines how to handle errors when writing to the motor group
+    /// using methods like [`set_target`], [`set_voltage`], etc.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use vexide::prelude::*;
+    /// use vexide_motorgroup::*;
+    ///
+    pub fn write_error_strategy(&mut self, mode: WriteErrorStrategy) -> &mut Self {
+        self.write_error_strategy = mode;
+        self
     }
 
     /// Sets the target that the motor group should attempt to reach.
@@ -197,6 +317,7 @@ impl MotorGroup {
     ///
     /// ```
     /// use vexide::prelude::*;
+    /// use vexide_motorgroup::*;
     ///
     /// #[vexide::main]
     /// async fn main(peripherals: Peripherals) {
@@ -213,9 +334,12 @@ impl MotorGroup {
     /// See the original method [here](https://docs.rs/vexide/latest/vexide/devices/smart/struct.Motor.html#method.set_target).
     pub fn set_target(&mut self, target: MotorControl) -> Result<(), MotorGroupError> {
         let mut errors = Vec::new();
-        for motor in &mut self.0 {
+        for motor in self.motors.as_mut() {
             if let Err(error) = motor.set_target(target) {
                 errors.push(error);
+                if self.write_error_strategy == WriteErrorStrategy::Stop {
+                    break;
+                }
             }
         }
         if errors.is_empty() {
@@ -235,6 +359,7 @@ impl MotorGroup {
     ///
     /// ```
     /// use vexide::prelude::*;
+    /// use vexide_motorgroup::*;
     ///
     /// #[vexide::main]
     /// async fn main(peripherals: Peripherals) {
@@ -249,9 +374,12 @@ impl MotorGroup {
     /// See the original method [here](https://docs.rs/vexide/latest/vexide/devices/smart/struct.Motor.html#method.brake).
     pub fn brake(&mut self, mode: BrakeMode) -> Result<(), MotorGroupError> {
         let mut errors = Vec::new();
-        for motor in &mut self.0 {
+        for motor in self.motors.as_mut() {
             if let Err(error) = motor.brake(mode) {
                 errors.push(error);
+                if self.write_error_strategy == WriteErrorStrategy::Stop {
+                    break;
+                }
             }
         }
         if errors.is_empty() {
@@ -277,6 +405,7 @@ impl MotorGroup {
     ///
     /// ```
     /// use vexide::prelude::*;
+    /// use vexide_motorgroup::*;
     ///
     /// #[vexide::main]
     /// async fn main(peripherals: Peripherals) {
@@ -292,9 +421,12 @@ impl MotorGroup {
     /// See the original method [here](https://docs.rs/vexide/latest/vexide/devices/smart/struct.Motor.html#method.set_velocity).
     pub fn set_velocity(&mut self, rpm: i32) -> Result<(), MotorGroupError> {
         let mut errors = Vec::new();
-        for motor in &mut self.0 {
+        for motor in self.motors.as_mut() {
             if let Err(error) = motor.set_velocity(rpm) {
                 errors.push(error);
+                if self.write_error_strategy == WriteErrorStrategy::Stop {
+                    break;
+                }
             }
         }
         if errors.is_empty() {
@@ -319,6 +451,7 @@ impl MotorGroup {
     ///
     /// ```
     /// use vexide::prelude::*;
+    /// use vexide_motorgroup::*;
     ///
     /// #[vexide::main]
     /// async fn main(peripherals: Peripherals) {
@@ -334,6 +467,7 @@ impl MotorGroup {
     ///
     /// ```
     /// use vexide::prelude::*;
+    /// use vexide_motorgroup::*;
     ///
     /// #[vexide::main]
     /// async fn main(peripherals: Peripherals) {
@@ -353,9 +487,12 @@ impl MotorGroup {
     /// See the original method [here](https://docs.rs/vexide/latest/vexide/devices/smart/struct.Motor.html#method.set_voltage).
     pub fn set_voltage(&mut self, volts: f64) -> Result<(), MotorGroupError> {
         let mut errors = Vec::new();
-        for motor in &mut self.0 {
+        for motor in self.motors.as_mut() {
             if let Err(error) = motor.set_voltage(volts) {
                 errors.push(error);
+                if self.write_error_strategy == WriteErrorStrategy::Stop {
+                    break;
+                }
             }
         }
         if errors.is_empty() {
@@ -375,6 +512,7 @@ impl MotorGroup {
     ///
     /// ```
     /// use vexide::prelude::*;
+    /// use vexide_motorgroup::*;
     ///
     /// #[vexide::main]
     ///
@@ -394,9 +532,12 @@ impl MotorGroup {
         velocity: i32,
     ) -> Result<(), MotorGroupError> {
         let mut errors = Vec::new();
-        for motor in &mut self.0 {
+        for motor in self.motors.as_mut() {
             if let Err(error) = motor.set_position_target(position, velocity) {
                 errors.push(error);
+                if self.write_error_strategy == WriteErrorStrategy::Stop {
+                    break;
+                }
             }
         }
         if errors.is_empty() {
@@ -418,6 +559,7 @@ impl MotorGroup {
     ///
     /// ```
     /// use vexide::prelude::*;
+    /// use vexide_motorgroup::*;
     ///
     /// #[vexide::main]
     /// async fn main(peripherals: Peripherals) {
@@ -434,9 +576,12 @@ impl MotorGroup {
     /// See the original method [here](https://docs.rs/vexide/latest/vexide/devices/smart/struct.Motor.html#method.set_profiled_velocity).
     pub fn set_profiled_velocity(&mut self, velocity: i32) -> Result<(), MotorGroupError> {
         let mut errors = Vec::new();
-        for motor in &mut self.0 {
+        for motor in self.motors.as_mut() {
             if let Err(error) = motor.set_profiled_velocity(velocity) {
                 errors.push(error);
+                if self.write_error_strategy == WriteErrorStrategy::Stop {
+                    break;
+                }
             }
         }
         if errors.is_empty() {
@@ -457,6 +602,7 @@ impl MotorGroup {
     ///
     /// ```
     /// use vexide::prelude::*;
+    /// use vexide_motorgroup::*;
     ///
     /// #[vexide::main]
     /// async fn main(peripherals: Peripherals) {
@@ -474,9 +620,12 @@ impl MotorGroup {
     /// See the original method [here](https://docs.rs/vexide/latest/vexide/devices/smart/struct.Motor.html#method.set_gearset).
     pub fn set_gearset(&mut self, gearset: Gearset) -> Result<(), MotorGroupError> {
         let mut errors = Vec::new();
-        for motor in &mut self.0 {
+        for motor in self.motors.as_mut() {
             if let Err(error) = motor.set_gearset(gearset) {
                 errors.push(error);
+                if self.write_error_strategy == WriteErrorStrategy::Stop {
+                    break;
+                }
             }
         }
         if errors.is_empty() {
@@ -492,6 +641,7 @@ impl MotorGroup {
     ///
     /// ```
     /// use vexide::prelude::*;
+    /// use vexide_motorgroup::*;
     ///
     /// #[vexide::main]
     /// async fn main(peripherals: Peripherals) {
@@ -507,7 +657,7 @@ impl MotorGroup {
     ///
     /// See the original method [here](https://docs.rs/vexide/latest/vexide/devices/smart/struct.Motor.html#method.is_exp).
     pub fn has_exp(&self) -> bool {
-        self.0.iter().any(|motor| motor.is_exp())
+        self.motors.as_ref().iter().any(|motor| motor.is_exp())
     }
 
     /// Returns `true` if the motor group has an 11W (V5) Smart Motor.
@@ -516,6 +666,7 @@ impl MotorGroup {
     ///
     /// ```
     /// use vexide::prelude::*;
+    /// use vexide_motorgroup::*;
     ///
     /// #[vexide::main]
     /// async fn main(peripherals: Peripherals) {
@@ -531,7 +682,7 @@ impl MotorGroup {
     ///
     /// See the original method [here](https://docs.rs/vexide/latest/vexide/devices/smart/struct.Motor.html#method.is_v5).
     pub fn has_v5(&self) -> bool {
-        self.0.iter().any(|motor| motor.is_v5())
+        self.motors.as_ref().iter().any(|motor| motor.is_v5())
     }
 
     /// Returns the maximum voltage for the motor group based off of its [motor type](Motor::motor_type).
@@ -541,6 +692,7 @@ impl MotorGroup {
     /// Run a motor group at max speed, agnostic of its type:
     /// ```
     /// use vexide::prelude::*;
+    /// use vexide_motorgroup::*;
     ///
     /// fn run_motor_group_at_max_speed(motor_group: &mut MotorGroup) {
     ///     motor_group.set_voltage(motor_group.max_voltage()).unwrap();
@@ -549,7 +701,8 @@ impl MotorGroup {
     ///
     /// See the original method [here](https://docs.rs/vexide/latest/vexide/devices/smart/struct.Motor.html#method.max_voltage).
     pub fn max_voltage(&self) -> f64 {
-        self.0
+        self.motors
+            .as_ref()
             .iter()
             .map(|motor| motor.max_voltage())
             .reduce(f64::max)
@@ -580,6 +733,7 @@ impl MotorGroup {
     /// Get the current velocity of a motor group:
     /// ```
     /// use vexide::prelude::*;
+    /// use vexide_motorgroup::*;
     ///
     /// #[vexide::main]
     /// async fn main(peripherals: Peripherals) {
@@ -595,6 +749,7 @@ impl MotorGroup {
     /// Calculate acceleration of a motor group:
     /// ```
     /// use vexide::prelude::*;
+    /// use vexide_motorgroup::*;
     ///
     /// #[vexide::main]
     /// async fn main(peripherals: Peripherals) {
@@ -621,11 +776,11 @@ impl MotorGroup {
     /// ```
     ///
     /// See the original method [here](https://docs.rs/vexide/latest/vexide/devices/smart/struct.Motor.html#method.velocity).
-    pub fn velocity(&self) -> Result<f64, MotorGroupError> {
+    pub fn velocity(&self) -> GetterResult<f64> {
         let mut errors = Vec::new();
         let mut sum = 0.0;
         let mut count = 0;
-        for motor in &self.0 {
+        for motor in self.motors.as_ref() {
             match motor.velocity() {
                 Ok(velocity) => {
                     sum += velocity;
@@ -636,8 +791,10 @@ impl MotorGroup {
         }
         if errors.is_empty() {
             Ok(sum / count as f64)
+        } else if count > 0 {
+            Err(MotorGroupError::with_result(errors, sum / count as f64))
         } else {
-            Err(MotorGroupError::new(errors))
+            Err(MotorGroupError::with_empty_result(errors))
         }
     }
 
@@ -652,6 +809,7 @@ impl MotorGroup {
     /// Print the power drawn by a motor group:
     /// ```
     /// use vexide::prelude::*;
+    /// use vexide_motorgroup::*;
     ///
     /// #[vexide::main]
     /// async fn main(peripherals: Peripherals) {
@@ -665,11 +823,11 @@ impl MotorGroup {
     /// ```
     ///
     /// See the original method [here](https://docs.rs/vexide/latest/vexide/devices/smart/struct.Motor.html#method.power).
-    pub fn power(&self) -> Result<f64, MotorGroupError> {
+    pub fn power(&self) -> GetterResult<f64> {
         let mut errors = Vec::new();
         let mut sum = 0.0;
         let mut count = 0;
-        for motor in &self.0 {
+        for motor in self.motors.as_ref() {
             match motor.power() {
                 Ok(power) => {
                     sum += power;
@@ -680,8 +838,10 @@ impl MotorGroup {
         }
         if errors.is_empty() {
             Ok(sum / count as f64)
+        } else if count > 0 {
+            Err(MotorGroupError::with_result(errors, sum / count as f64))
         } else {
-            Err(MotorGroupError::new(errors))
+            Err(MotorGroupError::with_empty_result(errors))
         }
     }
 
@@ -696,6 +856,7 @@ impl MotorGroup {
     /// Print the torque of a motor group:
     /// ```
     /// use vexide::prelude::*;
+    /// use vexide_motorgroup::*;
     ///
     /// #[vexide::main]
     /// async fn main(peripherals: Peripherals) {
@@ -709,11 +870,11 @@ impl MotorGroup {
     /// ```
     ///
     /// See the original method [here](https://docs.rs/vexide/latest/vexide/devices/smart/struct.Motor.html#method.torque).
-    pub fn torque(&self) -> Result<f64, MotorGroupError> {
+    pub fn torque(&self) -> GetterResult<f64> {
         let mut errors = Vec::new();
         let mut sum = 0.0;
         let mut count = 0;
-        for motor in &self.0 {
+        for motor in self.motors.as_ref() {
             match motor.torque() {
                 Ok(torque) => {
                     sum += torque;
@@ -724,8 +885,10 @@ impl MotorGroup {
         }
         if errors.is_empty() {
             Ok(sum / count as f64)
+        } else if count > 0 {
+            Err(MotorGroupError::with_result(errors, sum / count as f64))
         } else {
-            Err(MotorGroupError::new(errors))
+            Err(MotorGroupError::with_empty_result(errors))
         }
     }
 
@@ -740,6 +903,7 @@ impl MotorGroup {
     /// Print the voltage of a motor group:
     /// ```
     /// use vexide::prelude::*;
+    /// use vexide_motorgroup::*;
     ///
     /// #[vexide::main]
     /// async fn main(peripherals: Peripherals) {
@@ -753,11 +917,11 @@ impl MotorGroup {
     /// ```
     ///
     /// See the original method [here](https://docs.rs/vexide/latest/vexide/devices/smart/struct.Motor.html#method.voltage).
-    pub fn voltage(&self) -> Result<f64, MotorGroupError> {
+    pub fn voltage(&self) -> GetterResult<f64> {
         let mut errors = Vec::new();
         let mut sum = 0.0;
         let mut count = 0;
-        for motor in &self.0 {
+        for motor in self.motors.as_ref() {
             match motor.voltage() {
                 Ok(voltage) => {
                     sum += voltage;
@@ -768,8 +932,10 @@ impl MotorGroup {
         }
         if errors.is_empty() {
             Ok(sum / count as f64)
+        } else if count > 0 {
+            Err(MotorGroupError::with_result(errors, sum / count as f64))
         } else {
-            Err(MotorGroupError::new(errors))
+            Err(MotorGroupError::with_empty_result(errors))
         }
     }
 
@@ -784,6 +950,7 @@ impl MotorGroup {
     /// Print the position of a motor group:
     /// ```
     /// use vexide::prelude::*;
+    /// use vexide_motorgroup::*;
     ///
     /// #[vexide::main]
     /// async fn main(peripherals: Peripherals) {
@@ -797,11 +964,11 @@ impl MotorGroup {
     /// ```
     ///
     /// See the original method [here](https://docs.rs/vexide/latest/vexide/devices/smart/struct.Motor.html#method.position).
-    pub fn position(&self) -> Result<Position, MotorGroupError> {
+    pub fn position(&self) -> GetterResult<Position> {
         let mut errors = Vec::new();
         let mut sum = Position::from_ticks(0, 36000);
         let mut count = 0;
-        for motor in &self.0 {
+        for motor in self.motors.as_ref() {
             match motor.position() {
                 Ok(position) => {
                     sum += position;
@@ -812,8 +979,10 @@ impl MotorGroup {
         }
         if errors.is_empty() {
             Ok(sum / count as i64)
+        } else if count > 0 {
+            Err(MotorGroupError::with_result(errors, sum / count as i64))
         } else {
-            Err(MotorGroupError::new(errors))
+            Err(MotorGroupError::with_empty_result(errors))
         }
     }
 
@@ -828,6 +997,7 @@ impl MotorGroup {
     /// Print the current of a motor group:
     /// ```
     /// use vexide::prelude::*;
+    /// use vexide_motorgroup::*;
     ///
     /// #[vexide::main]
     /// async fn main(peripherals: Peripherals) {
@@ -841,11 +1011,11 @@ impl MotorGroup {
     /// ```
     ///
     /// See the original method [here](https://docs.rs/vexide/latest/vexide/devices/smart/struct.Motor.html#method.current).
-    pub fn current(&self) -> Result<f64, MotorGroupError> {
+    pub fn current(&self) -> GetterResult<f64> {
         let mut errors = Vec::new();
         let mut sum = 0.0;
         let mut count = 0;
-        for motor in &self.0 {
+        for motor in self.motors.as_ref() {
             match motor.current() {
                 Ok(current) => {
                     sum += current;
@@ -856,8 +1026,10 @@ impl MotorGroup {
         }
         if errors.is_empty() {
             Ok(sum / count as f64)
+        } else if count > 0 {
+            Err(MotorGroupError::with_result(errors, sum / count as f64))
         } else {
-            Err(MotorGroupError::new(errors))
+            Err(MotorGroupError::with_empty_result(errors))
         }
     }
 
@@ -872,6 +1044,7 @@ impl MotorGroup {
     /// Print the efficiency of a motor group:
     /// ```
     /// use vexide::prelude::*;
+    /// use vexide_motorgroup::*;
     ///
     /// #[vexide::main]
     /// async fn main(peripherals: Peripherals) {
@@ -885,11 +1058,11 @@ impl MotorGroup {
     /// ```
     ///
     /// See the original method [here](https://docs.rs/vexide/latest/vexide/devices/smart/struct.Motor.html#method.efficiency).
-    pub fn efficiency(&self) -> Result<f64, MotorGroupError> {
+    pub fn efficiency(&self) -> GetterResult<f64> {
         let mut errors = Vec::new();
         let mut sum = 0.0;
         let mut count = 0;
-        for motor in &self.0 {
+        for motor in self.motors.as_ref() {
             match motor.efficiency() {
                 Ok(efficiency) => {
                     sum += efficiency;
@@ -900,8 +1073,10 @@ impl MotorGroup {
         }
         if errors.is_empty() {
             Ok(sum / count as f64)
+        } else if count > 0 {
+            Err(MotorGroupError::with_result(errors, sum / count as f64))
         } else {
-            Err(MotorGroupError::new(errors))
+            Err(MotorGroupError::with_empty_result(errors))
         }
     }
 
@@ -916,6 +1091,7 @@ impl MotorGroup {
     /// Reset the position of a motor group:
     /// ```
     /// use vexide::prelude::*;
+    /// use vexide_motorgroup::*;
     ///
     /// #[vexide::main]
     /// async fn main(peripherals: Peripherals) {
@@ -931,9 +1107,12 @@ impl MotorGroup {
     /// See the original method [here](https://docs.rs/vexide/latest/vexide/devices/smart/struct.Motor.html#method.reset_position).
     pub fn reset_position(&mut self) -> Result<(), MotorGroupError> {
         let mut errors = Vec::new();
-        for motor in &mut self.0 {
+        for motor in self.motors.as_mut() {
             if let Err(error) = motor.reset_position() {
                 errors.push(error);
+                if self.write_error_strategy == WriteErrorStrategy::Stop {
+                    break;
+                }
             }
         }
         if errors.is_empty() {
@@ -954,6 +1133,7 @@ impl MotorGroup {
     /// Set the position of a motor group:
     /// ```
     /// use vexide::prelude::*;
+    /// use vexide_motorgroup::*;
     ///
     /// #[vexide::main]
     /// async fn main(peripherals: Peripherals) {
@@ -969,9 +1149,12 @@ impl MotorGroup {
     /// See the original method [here](https://docs.rs/vexide/latest/vexide/devices/smart/struct.Motor.html#method.set_position).
     pub fn set_position(&mut self, position: Position) -> Result<(), MotorGroupError> {
         let mut errors = Vec::new();
-        for motor in &mut self.0 {
+        for motor in self.motors.as_mut() {
             if let Err(error) = motor.set_position(position) {
                 errors.push(error);
+                if self.write_error_strategy == WriteErrorStrategy::Stop {
+                    break;
+                }
             }
         }
         if errors.is_empty() {
@@ -992,6 +1175,7 @@ impl MotorGroup {
     /// Set the current limit of a motor group:
     /// ```
     /// use vexide::prelude::*;
+    /// use vexide_motorgroup::*;
     ///
     /// #[vexide::main]
     /// async fn main(peripherals: Peripherals) {
@@ -1007,9 +1191,12 @@ impl MotorGroup {
     /// See the original method [here](https://docs.rs/vexide/latest/vexide/devices/smart/struct.Motor.html#method.set_current_limit).
     pub fn set_current_limit(&mut self, limit: f64) -> Result<(), MotorGroupError> {
         let mut errors = Vec::new();
-        for motor in &mut self.0 {
+        for motor in self.motors.as_mut() {
             if let Err(error) = motor.set_current_limit(limit) {
                 errors.push(error);
+                if self.write_error_strategy == WriteErrorStrategy::Stop {
+                    break;
+                }
             }
         }
         if errors.is_empty() {
@@ -1030,6 +1217,7 @@ impl MotorGroup {
     /// Set the voltage limit of a motor group:
     /// ```
     /// use vexide::prelude::*;
+    /// use vexide_motorgroup::*;
     ///
     /// #[vexide::main]
     /// async fn main(peripherals: Peripherals) {
@@ -1045,9 +1233,12 @@ impl MotorGroup {
     /// See the original method [here](https://docs.rs/vexide/latest/vexide/devices/smart/struct.Motor.html#method.set_voltage_limit).
     pub fn set_voltage_limit(&mut self, limit: f64) -> Result<(), MotorGroupError> {
         let mut errors = Vec::new();
-        for motor in &mut self.0 {
+        for motor in self.motors.as_mut() {
             if let Err(error) = motor.set_voltage_limit(limit) {
                 errors.push(error);
+                if self.write_error_strategy == WriteErrorStrategy::Stop {
+                    break;
+                }
             }
         }
         if errors.is_empty() {
@@ -1068,6 +1259,7 @@ impl MotorGroup {
     /// Print the temperature of a motor group:
     /// ```
     /// use vexide::prelude::*;
+    /// use vexide_motorgroup::*;
     ///
     /// #[vexide::main]
     /// async fn main(peripherals: Peripherals) {
@@ -1081,11 +1273,11 @@ impl MotorGroup {
     /// ```
     ///
     /// See the original method [here](https://docs.rs/vexide/latest/vexide/devices/smart/struct.Motor.html#method.temperature).
-    pub fn temperature(&self) -> Result<f64, MotorGroupError> {
+    pub fn temperature(&self) -> GetterResult<f64> {
         let mut errors = Vec::new();
         let mut sum = 0.0;
         let mut count = 0;
-        for motor in &self.0 {
+        for motor in self.motors.as_ref() {
             match motor.temperature() {
                 Ok(temperature) => {
                     sum += temperature;
@@ -1096,8 +1288,10 @@ impl MotorGroup {
         }
         if errors.is_empty() {
             Ok(sum / count as f64)
+        } else if count > 0 {
+            Err(MotorGroupError::with_result(errors, sum / count as f64))
         } else {
-            Err(MotorGroupError::new(errors))
+            Err(MotorGroupError::with_empty_result(errors))
         }
     }
 
@@ -1107,11 +1301,15 @@ impl MotorGroup {
     ///
     /// - A [`MotorGroupError`] error is returned if any motor encounters an error.
     ///
+    /// Note that this method will still return `Ok` if a motor encounters an
+    /// error but a motor in a group is still over temperature.
+    ///
     /// # Examples
     ///
     /// Check if a motor group is over temperature:
     /// ```
     /// use vexide::prelude::*;
+    /// use vexide_motorgroup::*;
     ///
     /// #[vexide::main]
     /// async fn main(peripherals: Peripherals) {
@@ -1127,7 +1325,7 @@ impl MotorGroup {
     /// See the original method [here](https://docs.rs/vexide/latest/vexide/devices/smart/struct.Motor.html#method.is_over_temperature).
     pub fn is_over_temperature(&self) -> Result<bool, MotorGroupError> {
         let mut errors = Vec::new();
-        for motor in &self.0 {
+        for motor in self.motors.as_ref() {
             match motor.is_over_temperature() {
                 Ok(true) => return Ok(true),
                 Err(error) => errors.push(error),
@@ -1147,11 +1345,15 @@ impl MotorGroup {
     ///
     /// - A [`MotorGroupError`] error is returned if any motor encounters an error.
     ///
+    /// Note that this method will still return `Ok` if a motor encounters an
+    /// error but a motor in a group is still over current.
+    ///
     /// # Examples
     ///
     /// Check if a motor group is over current:
     /// ```
     /// use vexide::prelude::*;
+    /// use vexide_motorgroup::*;
     ///
     /// #[vexide::main]
     /// async fn main(peripherals: Peripherals) {
@@ -1167,7 +1369,7 @@ impl MotorGroup {
     /// See the original method [here](https://docs.rs/vexide/latest/vexide/devices/smart/struct.Motor.html#method.is_over_current).
     pub fn is_over_current(&self) -> Result<bool, MotorGroupError> {
         let mut errors = Vec::new();
-        for motor in &self.0 {
+        for motor in self.motors.as_ref() {
             match motor.is_over_current() {
                 Ok(true) => return Ok(true),
                 Err(error) => errors.push(error),
@@ -1187,11 +1389,15 @@ impl MotorGroup {
     ///
     /// - A [`MotorGroupError`] error is returned if any motor encounters an error.
     ///
+    /// Note that this method will still return `Ok` if a motor encounters an
+    /// error but a motor in a group has a driver fault.
+    ///
     /// # Examples
     ///
     /// Check if a motor group has a driver fault:
     /// ```
     /// use vexide::prelude::*;
+    /// use vexide_motorgroup::*;
     ///
     /// #[vexide::main]
     /// async fn main(peripherals: Peripherals) {
@@ -1207,7 +1413,7 @@ impl MotorGroup {
     /// See the original method [here](https://docs.rs/vexide/latest/vexide/devices/smart/struct.Motor.html#method.is_driver_fault).
     pub fn is_driver_fault(&self) -> Result<bool, MotorGroupError> {
         let mut errors = Vec::new();
-        for motor in &self.0 {
+        for motor in self.motors.as_ref() {
             match motor.is_driver_fault() {
                 Ok(true) => return Ok(true),
                 Err(error) => errors.push(error),
@@ -1227,11 +1433,15 @@ impl MotorGroup {
     ///
     /// - A [`MotorGroupError`] error is returned if any motor encounters an error.
     ///
+    /// Note that this method will still return `Ok` if a motor encounters an
+    /// error but a motor in a group is still over current.
+    ///
     /// # Examples
     ///
     /// Check if a motor group is over current:
     /// ```
     /// use vexide::prelude::*;
+    /// use vexide_motorgroup::*;
     ///
     /// #[vexide::main]
     /// async fn main(peripherals: Peripherals) {
@@ -1247,7 +1457,7 @@ impl MotorGroup {
     /// See the original method [here](https://docs.rs/vexide/latest/vexide/devices/smart/struct.Motor.html#method.is_driver_over_current).
     pub fn is_driver_over_current(&self) -> Result<bool, MotorGroupError> {
         let mut errors = Vec::new();
-        for motor in &self.0 {
+        for motor in self.motors.as_ref() {
             match motor.is_driver_over_current() {
                 Ok(true) => return Ok(true),
                 Err(error) => errors.push(error),
@@ -1272,6 +1482,7 @@ impl MotorGroup {
     /// Set the direction of a motor group:
     /// ```
     /// use vexide::prelude::*;
+    /// use vexide_motorgroup::*;
     ///
     /// #[vexide::main]
     /// async fn main(peripherals: Peripherals) {
@@ -1287,9 +1498,12 @@ impl MotorGroup {
     /// See the original method [here](https://docs.rs/vexide/latest/vexide/devices/smart/struct.Motor.html#method.set_direction).
     pub fn set_direction(&mut self, direction: Direction) -> Result<(), MotorGroupError> {
         let mut errors = Vec::new();
-        for motor in &mut self.0 {
+        for motor in self.motors.as_mut() {
             if let Err(error) = motor.set_direction(direction) {
                 errors.push(error);
+                if self.write_error_strategy == WriteErrorStrategy::Stop {
+                    break;
+                }
             }
         }
         if errors.is_empty() {
