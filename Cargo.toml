@@ -19,10 +19,10 @@ compress = true
 targets = ["armv7a-none-eabi"]
 
 [dependencies]
-vexide = { version = "0.7.0-beta.3", default-features = false, features = [
+vexide = { version = "0.7.0", default-features = false, features = [
   "core",
   "devices",
 ] }
 
 [dev-dependencies]
-vexide = "0.7.0-beta.3"
+vexide = "0.7.0"
