@@ -1,7 +1,11 @@
 use core::cell::RefCell;
 
 use alloc::{rc::Rc, vec::Vec};
-use vexide::prelude::*;
+use vexide::{
+    math::Angle,
+    prelude::*,
+    smart::motor::{BrakeMode, MotorControl, SetGearsetError},
+};
 
 use crate::{GetterResult, MotorGroup, MotorGroupError, WriteErrorStrategy};
 
@@ -48,7 +52,7 @@ impl<M: AsRef<[Motor]> + AsMut<[Motor]>> SharedMotors<M> {
     /// See [`MotorGroup::set_position_target`].
     pub fn set_position_target(
         &mut self,
-        position: Position,
+        position: Angle,
         velocity: i32,
     ) -> Result<(), MotorGroupError> {
         self.0.borrow_mut().set_position_target(position, velocity)
@@ -60,7 +64,10 @@ impl<M: AsRef<[Motor]> + AsMut<[Motor]>> SharedMotors<M> {
     }
 
     /// See [`MotorGroup::set_gearset`].
-    pub fn set_gearset(&mut self, gearset: Gearset) -> Result<(), MotorGroupError> {
+    pub fn set_gearset(
+        &mut self,
+        gearset: Gearset,
+    ) -> Result<(), MotorGroupError<SetGearsetError>> {
         self.0.borrow_mut().set_gearset(gearset)
     }
 
@@ -100,7 +107,7 @@ impl<M: AsRef<[Motor]> + AsMut<[Motor]>> SharedMotors<M> {
     }
 
     /// See [`MotorGroup::position`].
-    pub fn position(&self) -> GetterResult<Position> {
+    pub fn position(&self) -> GetterResult<Angle> {
         self.0.borrow().position()
     }
 
@@ -120,7 +127,7 @@ impl<M: AsRef<[Motor]> + AsMut<[Motor]>> SharedMotors<M> {
     }
 
     /// See [`MotorGroup::set_position`].
-    pub fn set_position(&mut self, position: Position) -> Result<(), MotorGroupError> {
+    pub fn set_position(&mut self, position: Angle) -> Result<(), MotorGroupError> {
         self.0.borrow_mut().set_position(position)
     }
 

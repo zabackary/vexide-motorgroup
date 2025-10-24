@@ -56,7 +56,7 @@
 //!
 //!     // Set the motor group's target to a position
 //!     motor_group
-//!         .set_position_target(Position::from_degrees(90.0), 200)
+//!         .set_position_target(Angle::from_degrees(90.0), 200)
 //!         .unwrap();
 //!     sleep(Duration::from_secs(1)).await;
 //!
@@ -89,8 +89,6 @@
 //! 2. [`WriteErrorStrategy::Stop`]: This strategy will stop writing to the
 //!    other motors and return the error immediately.
 
-#![no_std]
-
 extern crate alloc;
 
 mod macros;
@@ -100,8 +98,12 @@ pub use shared_motors::SharedMotors;
 
 use alloc::vec::Vec;
 use vexide::{
-    devices::smart::{motor::MotorError, Motor},
-    prelude::{BrakeMode, Direction, Gearset, MotorControl, Position},
+    math::Angle,
+    prelude::{Direction, Gearset},
+    smart::{
+        PortError,
+        motor::{BrakeMode, Motor, MotorControl, SetGearsetError},
+    },
 };
 
 /// An error that occurs when controlling a motor group.
@@ -116,18 +118,18 @@ use vexide::{
 /// with a `MotorGroupError` to return a `MotorError` to a result.
 #[derive(Debug)]
 #[non_exhaustive]
-pub struct MotorGroupError<T = ()> {
-    pub errors: Vec<MotorError>,
+pub struct MotorGroupError<E = PortError, T = ()> {
+    pub errors: Vec<E>,
     pub result: Option<T>,
 }
 
-impl MotorGroupError<()> {
+impl<E> MotorGroupError<E, ()> {
     /// Creates a new motor group error from a `Vec` of motor errors.
     ///
     /// # Panics
     ///
     /// Panics if the errors vector is empty.
-    pub(crate) fn new(errors: Vec<MotorError>) -> Self {
+    pub(crate) fn new(errors: Vec<E>) -> Self {
         assert!(
             !errors.is_empty(),
             "Cannot create a MotorGroupError with no errors"
@@ -139,8 +141,8 @@ impl MotorGroupError<()> {
     }
 }
 
-impl<T> MotorGroupError<T> {
-    pub(crate) fn with_result(errors: Vec<MotorError>, result: T) -> Self {
+impl<E, T> MotorGroupError<E, T> {
+    pub(crate) fn with_result(errors: Vec<E>, result: T) -> Self {
         assert!(
             !errors.is_empty(),
             "Cannot create a MotorGroupError with no errors"
@@ -151,7 +153,7 @@ impl<T> MotorGroupError<T> {
         }
     }
 
-    pub(crate) fn with_empty_result(errors: Vec<MotorError>) -> Self {
+    pub(crate) fn with_empty_result(errors: Vec<E>) -> Self {
         assert!(
             !errors.is_empty(),
             "Cannot create a MotorGroupError with no errors"
@@ -172,33 +174,19 @@ impl<T> MotorGroupError<T> {
     }
 
     /// The first error that occurred in the motor group.
-    pub fn first(&self) -> &MotorError {
+    pub fn first(&self) -> &E {
         &self.errors[0]
-    }
-
-    /// Whether the motor group has a busy error.
-    ///
-    /// A busy error occurs when communication with a motor is not possible
-    /// when reading flags.
-    pub fn has_busy_error(&self) -> bool {
-        self.errors
-            .iter()
-            .any(|error| matches!(error, MotorError::Busy))
-    }
-
-    /// Whether the motor group has a port error.
-    ///
-    /// A port error occurs when a motor is not currently connected to a Smart
-    /// Port.
-    pub fn has_port_error(&self) -> bool {
-        self.errors
-            .iter()
-            .any(|error| matches!(error, MotorError::Port { source: _ }))
     }
 }
 
-impl From<MotorGroupError> for MotorError {
-    fn from(error: MotorGroupError) -> Self {
+impl From<MotorGroupError<PortError>> for PortError {
+    fn from(error: MotorGroupError<PortError>) -> Self {
+        error.errors.into_iter().next().unwrap()
+    }
+}
+
+impl From<MotorGroupError<SetGearsetError>> for SetGearsetError {
+    fn from(error: MotorGroupError<SetGearsetError>) -> Self {
         error.errors.into_iter().next().unwrap()
     }
 }
@@ -251,7 +239,7 @@ pub struct MotorGroup<M: AsRef<[Motor]> + AsMut<[Motor]> = Vec<Motor>> {
     write_error_strategy: WriteErrorStrategy,
 }
 
-type GetterResult<T> = Result<T, MotorGroupError<T>>;
+type GetterResult<T> = Result<T, MotorGroupError<PortError, T>>;
 
 impl<M: AsRef<[Motor]> + AsMut<[Motor]>> MotorGroup<M> {
     /// Creates a new motor group from a vector of motors.
@@ -521,14 +509,14 @@ impl<M: AsRef<[Motor]> + AsMut<[Motor]>> MotorGroup<M> {
     ///         Motor::new(peripherals.port_1, Gearset::Green, Direction::Forward),
     ///         Motor::new(peripherals.port_2, Gearset::Green, Direction::Forward),
     ///     ]);
-    ///     let _ = motor_group.set_position_target(Position::from_degrees(90.0), 200);
+    ///     let _ = motor_group.set_position_target(Angle::from_degrees(90.0), 200);
     /// }
     /// ```
     ///
     /// See the original method [here](https://docs.rs/vexide/latest/vexide/devices/smart/struct.Motor.html#method.set_position_target).
     pub fn set_position_target(
         &mut self,
-        position: Position,
+        position: Angle,
         velocity: i32,
     ) -> Result<(), MotorGroupError> {
         let mut errors = Vec::new();
@@ -567,8 +555,8 @@ impl<M: AsRef<[Motor]> + AsMut<[Motor]>> MotorGroup<M> {
     ///         Motor::new(peripherals.port_1, Gearset::Green, Direction::Forward),
     ///         Motor::new(peripherals.port_2, Gearset::Green, Direction::Forward),
     ///     ]);
-    ///     // Set the motor group's target to a Position so that changing the velocity isn't a noop.
-    ///     let _ = motor_group.set_target(MotorControl::Position(Position::from_degrees(90.0), 200));
+    ///     // Set the motor group's target to a Angle so that changing the velocity isn't a noop.
+    ///     let _ = motor_group.set_target(MotorControl::Angle(Angle::from_degrees(90.0), 200));
     ///     let _ = motor_group.set_profiled_velocity(100).unwrap();
     /// }
     /// ```
@@ -618,7 +606,10 @@ impl<M: AsRef<[Motor]> + AsMut<[Motor]>> MotorGroup<M> {
     /// ```
     ///
     /// See the original method [here](https://docs.rs/vexide/latest/vexide/devices/smart/struct.Motor.html#method.set_gearset).
-    pub fn set_gearset(&mut self, gearset: Gearset) -> Result<(), MotorGroupError> {
+    pub fn set_gearset(
+        &mut self,
+        gearset: Gearset,
+    ) -> Result<(), MotorGroupError<SetGearsetError>> {
         let mut errors = Vec::new();
         for motor in self.motors.as_mut() {
             if let Err(error) = motor.set_gearset(gearset) {
@@ -964,9 +955,9 @@ impl<M: AsRef<[Motor]> + AsMut<[Motor]>> MotorGroup<M> {
     /// ```
     ///
     /// See the original method [here](https://docs.rs/vexide/latest/vexide/devices/smart/struct.Motor.html#method.position).
-    pub fn position(&self) -> GetterResult<Position> {
+    pub fn position(&self) -> GetterResult<Angle> {
         let mut errors = Vec::new();
-        let mut sum = Position::from_ticks(0, 36000);
+        let mut sum = Angle::ZERO;
         let mut count = 0;
         for motor in self.motors.as_ref() {
             match motor.position() {
@@ -978,9 +969,9 @@ impl<M: AsRef<[Motor]> + AsMut<[Motor]>> MotorGroup<M> {
             }
         }
         if errors.is_empty() {
-            Ok(sum / count as i64)
+            Ok(sum / count as f64)
         } else if count > 0 {
-            Err(MotorGroupError::with_result(errors, sum / count as i64))
+            Err(MotorGroupError::with_result(errors, sum / count as f64))
         } else {
             Err(MotorGroupError::with_empty_result(errors))
         }
@@ -1142,12 +1133,12 @@ impl<M: AsRef<[Motor]> + AsMut<[Motor]>> MotorGroup<M> {
     ///         Motor::new(peripherals.port_2, Gearset::Green, Direction::Forward),
     ///     ]);
     ///
-    ///     motor_group.set_position(Position::from_degrees(90.0)).unwrap();
+    ///     motor_group.set_position(Angle::from_degrees(90.0)).unwrap();
     /// }
     /// ```
     ///
     /// See the original method [here](https://docs.rs/vexide/latest/vexide/devices/smart/struct.Motor.html#method.set_position).
-    pub fn set_position(&mut self, position: Position) -> Result<(), MotorGroupError> {
+    pub fn set_position(&mut self, position: Angle) -> Result<(), MotorGroupError> {
         let mut errors = Vec::new();
         for motor in self.motors.as_mut() {
             if let Err(error) = motor.set_position(position) {

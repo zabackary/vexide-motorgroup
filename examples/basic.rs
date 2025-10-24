@@ -1,6 +1,3 @@
-#![no_std]
-#![no_main]
-
 extern crate alloc;
 
 use core::time::Duration;
@@ -8,7 +5,7 @@ use core::time::Duration;
 use alloc::vec;
 use vexide_motorgroup::MotorGroup;
 
-use vexide::prelude::*;
+use vexide::{math::Angle, prelude::*, smart::motor::BrakeMode};
 
 #[vexide::main]
 async fn main(peripherals: Peripherals) {
@@ -23,7 +20,7 @@ async fn main(peripherals: Peripherals) {
 
     // Set the motor group's target to a position
     motor_group
-        .set_position_target(Position::from_degrees(90.0), 200)
+        .set_position_target(Angle::from_degrees(90.0), 200)
         .unwrap();
     sleep(Duration::from_secs(1)).await;
 
