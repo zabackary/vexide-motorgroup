@@ -6,7 +6,7 @@ authors = ["zabackary"]
 license = "MIT"
 readme = "README.md"
 keywords = ["vex", "vexide", "vex-robotics", "robotics", "motorgroup"]
-version = "2.2.0-alpha.3"
+version = "2.2.0-alpha.4"
 edition = "2024"
 
 [package.metadata.v5]
