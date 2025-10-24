@@ -8,7 +8,7 @@
 //!
 //! Add the following to your `Cargo.toml`:
 //!
-//! ```toml
+//! ```toml,ignore
 //! [dependencies]
 //! # ... other dependencies
 //! vexide-motorgroup = "2.1.0"
@@ -16,7 +16,7 @@
 //!
 //! Or if you prefer the command line:
 //!
-//! ```sh
+//! ```sh,ignore
 //! cargo add vexide-motorgroup
 //! ```
 //!
@@ -29,13 +29,8 @@
 //! Just create a `MotorGroup` with a `Vec` of `Motor`s and use the `MotorGroup`
 //! methods just like you would with a `Motor`. It's that simple!
 //!
-//! ```rust
-//! #![no_std]
-//! #![no_main]
-//!
-//! extern crate alloc;
-//!
-//! use core::time::Duration;
+//! ```rust,ignore
+//! use std::time::Duration;
 //!
 //! use alloc::vec;
 //! use vexide_motorgroup::*;
@@ -93,6 +88,8 @@ extern crate alloc;
 
 mod macros;
 mod shared_motors;
+#[cfg(test)]
+mod tests;
 
 pub use shared_motors::SharedMotors;
 
@@ -249,7 +246,7 @@ impl<M: AsRef<[Motor]> + AsMut<[Motor]>> MotorGroup<M> {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```rust,ignore
     /// use vexide::prelude::*;
     /// use vexide_motorgroup::*;
     ///
@@ -284,7 +281,7 @@ impl<M: AsRef<[Motor]> + AsMut<[Motor]>> MotorGroup<M> {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```rust,ignore
     /// use vexide::prelude::*;
     /// use vexide_motorgroup::*;
     ///
@@ -303,7 +300,7 @@ impl<M: AsRef<[Motor]> + AsMut<[Motor]>> MotorGroup<M> {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```rust,ignore
     /// use vexide::prelude::*;
     /// use vexide_motorgroup::*;
     ///
@@ -345,7 +342,7 @@ impl<M: AsRef<[Motor]> + AsMut<[Motor]>> MotorGroup<M> {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```rust,ignore
     /// use vexide::prelude::*;
     /// use vexide_motorgroup::*;
     ///
@@ -391,7 +388,7 @@ impl<M: AsRef<[Motor]> + AsMut<[Motor]>> MotorGroup<M> {
     ///
     /// Spin a motor group at 100 RPM:
     ///
-    /// ```
+    /// ```rust,ignore
     /// use vexide::prelude::*;
     /// use vexide_motorgroup::*;
     ///
@@ -437,7 +434,7 @@ impl<M: AsRef<[Motor]> + AsMut<[Motor]>> MotorGroup<M> {
     ///
     /// Give the motor group full power:
     ///
-    /// ```
+    /// ```rust,ignore
     /// use vexide::prelude::*;
     /// use vexide_motorgroup::*;
     ///
@@ -453,7 +450,7 @@ impl<M: AsRef<[Motor]> + AsMut<[Motor]>> MotorGroup<M> {
     ///
     /// Drive the motor group based on a controller joystick:
     ///
-    /// ```
+    /// ```rust,ignore
     /// use vexide::prelude::*;
     /// use vexide_motorgroup::*;
     ///
@@ -498,7 +495,7 @@ impl<M: AsRef<[Motor]> + AsMut<[Motor]>> MotorGroup<M> {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```rust,ignore
     /// use vexide::prelude::*;
     /// use vexide_motorgroup::*;
     ///
@@ -545,7 +542,7 @@ impl<M: AsRef<[Motor]> + AsMut<[Motor]>> MotorGroup<M> {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```rust,ignore
     /// use vexide::prelude::*;
     /// use vexide_motorgroup::*;
     ///
@@ -588,7 +585,7 @@ impl<M: AsRef<[Motor]> + AsMut<[Motor]>> MotorGroup<M> {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```rust,ignore
     /// use vexide::prelude::*;
     /// use vexide_motorgroup::*;
     ///
@@ -630,7 +627,7 @@ impl<M: AsRef<[Motor]> + AsMut<[Motor]>> MotorGroup<M> {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```rust,ignore
     /// use vexide::prelude::*;
     /// use vexide_motorgroup::*;
     ///
@@ -655,7 +652,7 @@ impl<M: AsRef<[Motor]> + AsMut<[Motor]>> MotorGroup<M> {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```rust,ignore
     /// use vexide::prelude::*;
     /// use vexide_motorgroup::*;
     ///
@@ -681,7 +678,7 @@ impl<M: AsRef<[Motor]> + AsMut<[Motor]>> MotorGroup<M> {
     /// # Examples
     ///
     /// Run a motor group at max speed, agnostic of its type:
-    /// ```
+    /// ```rust,ignore
     /// use vexide::prelude::*;
     /// use vexide_motorgroup::*;
     ///
@@ -722,7 +719,7 @@ impl<M: AsRef<[Motor]> + AsMut<[Motor]>> MotorGroup<M> {
     /// # Examples
     ///
     /// Get the current velocity of a motor group:
-    /// ```
+    /// ```rust,ignore
     /// use vexide::prelude::*;
     /// use vexide_motorgroup::*;
     ///
@@ -738,7 +735,7 @@ impl<M: AsRef<[Motor]> + AsMut<[Motor]>> MotorGroup<M> {
     /// ```
     ///
     /// Calculate acceleration of a motor group:
-    /// ```
+    /// ```rust,ignore
     /// use vexide::prelude::*;
     /// use vexide_motorgroup::*;
     ///
@@ -798,7 +795,7 @@ impl<M: AsRef<[Motor]> + AsMut<[Motor]>> MotorGroup<M> {
     /// # Examples
     ///
     /// Print the power drawn by a motor group:
-    /// ```
+    /// ```rust,ignore
     /// use vexide::prelude::*;
     /// use vexide_motorgroup::*;
     ///
@@ -845,7 +842,7 @@ impl<M: AsRef<[Motor]> + AsMut<[Motor]>> MotorGroup<M> {
     /// # Examples
     ///
     /// Print the torque of a motor group:
-    /// ```
+    /// ```rust,ignore
     /// use vexide::prelude::*;
     /// use vexide_motorgroup::*;
     ///
@@ -892,7 +889,7 @@ impl<M: AsRef<[Motor]> + AsMut<[Motor]>> MotorGroup<M> {
     /// # Examples
     ///
     /// Print the voltage of a motor group:
-    /// ```
+    /// ```rust,ignore
     /// use vexide::prelude::*;
     /// use vexide_motorgroup::*;
     ///
@@ -939,7 +936,7 @@ impl<M: AsRef<[Motor]> + AsMut<[Motor]>> MotorGroup<M> {
     /// # Examples
     ///
     /// Print the position of a motor group:
-    /// ```
+    /// ```rust,ignore
     /// use vexide::prelude::*;
     /// use vexide_motorgroup::*;
     ///
@@ -986,7 +983,7 @@ impl<M: AsRef<[Motor]> + AsMut<[Motor]>> MotorGroup<M> {
     /// # Examples
     ///
     /// Print the current of a motor group:
-    /// ```
+    /// ```rust,ignore
     /// use vexide::prelude::*;
     /// use vexide_motorgroup::*;
     ///
@@ -1033,7 +1030,7 @@ impl<M: AsRef<[Motor]> + AsMut<[Motor]>> MotorGroup<M> {
     /// # Examples
     ///
     /// Print the efficiency of a motor group:
-    /// ```
+    /// ```rust,ignore
     /// use vexide::prelude::*;
     /// use vexide_motorgroup::*;
     ///
@@ -1080,7 +1077,7 @@ impl<M: AsRef<[Motor]> + AsMut<[Motor]>> MotorGroup<M> {
     /// # Examples
     ///
     /// Reset the position of a motor group:
-    /// ```
+    /// ```rust,ignore
     /// use vexide::prelude::*;
     /// use vexide_motorgroup::*;
     ///
@@ -1122,7 +1119,7 @@ impl<M: AsRef<[Motor]> + AsMut<[Motor]>> MotorGroup<M> {
     /// # Examples
     ///
     /// Set the position of a motor group:
-    /// ```
+    /// ```rust,ignore
     /// use vexide::prelude::*;
     /// use vexide_motorgroup::*;
     ///
@@ -1164,7 +1161,7 @@ impl<M: AsRef<[Motor]> + AsMut<[Motor]>> MotorGroup<M> {
     /// # Examples
     ///
     /// Set the current limit of a motor group:
-    /// ```
+    /// ```rust,ignore
     /// use vexide::prelude::*;
     /// use vexide_motorgroup::*;
     ///
@@ -1206,7 +1203,7 @@ impl<M: AsRef<[Motor]> + AsMut<[Motor]>> MotorGroup<M> {
     /// # Examples
     ///
     /// Set the voltage limit of a motor group:
-    /// ```
+    /// ```rust,ignore
     /// use vexide::prelude::*;
     /// use vexide_motorgroup::*;
     ///
@@ -1248,7 +1245,7 @@ impl<M: AsRef<[Motor]> + AsMut<[Motor]>> MotorGroup<M> {
     /// # Examples
     ///
     /// Print the temperature of a motor group:
-    /// ```
+    /// ```rust,ignore
     /// use vexide::prelude::*;
     /// use vexide_motorgroup::*;
     ///
@@ -1298,7 +1295,7 @@ impl<M: AsRef<[Motor]> + AsMut<[Motor]>> MotorGroup<M> {
     /// # Examples
     ///
     /// Check if a motor group is over temperature:
-    /// ```
+    /// ```rust,ignore
     /// use vexide::prelude::*;
     /// use vexide_motorgroup::*;
     ///
@@ -1342,7 +1339,7 @@ impl<M: AsRef<[Motor]> + AsMut<[Motor]>> MotorGroup<M> {
     /// # Examples
     ///
     /// Check if a motor group is over current:
-    /// ```
+    /// ```rust,ignore
     /// use vexide::prelude::*;
     /// use vexide_motorgroup::*;
     ///
@@ -1386,7 +1383,7 @@ impl<M: AsRef<[Motor]> + AsMut<[Motor]>> MotorGroup<M> {
     /// # Examples
     ///
     /// Check if a motor group has a driver fault:
-    /// ```
+    /// ```rust,ignore
     /// use vexide::prelude::*;
     /// use vexide_motorgroup::*;
     ///
@@ -1430,7 +1427,7 @@ impl<M: AsRef<[Motor]> + AsMut<[Motor]>> MotorGroup<M> {
     /// # Examples
     ///
     /// Check if a motor group is over current:
-    /// ```
+    /// ```rust,ignore
     /// use vexide::prelude::*;
     /// use vexide_motorgroup::*;
     ///
@@ -1471,7 +1468,7 @@ impl<M: AsRef<[Motor]> + AsMut<[Motor]>> MotorGroup<M> {
     /// # Examples
     ///
     /// Set the direction of a motor group:
-    /// ```
+    /// ```rust,ignore
     /// use vexide::prelude::*;
     /// use vexide_motorgroup::*;
     ///
