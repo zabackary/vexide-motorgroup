@@ -9,7 +9,7 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     permissions:
-      contents: read # Required for actions/checkout
+      contents: write # Required for actions/checkout
       id-token: write # Required for Trusted Publishing
     steps:
       - name: Setup | Checkout
