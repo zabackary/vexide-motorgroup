@@ -6,8 +6,8 @@ authors = ["zabackary"]
 license = "MIT"
 readme = "README.md"
 keywords = ["vex", "vexide", "vex-robotics", "robotics", "motorgroup"]
-version = "2.1.0"
-edition = "2021"
+version = "2.2.0-alpha.1"
+edition = "2024"
 
 [package.metadata.v5]
 upload-strategy = "differential"
@@ -15,14 +15,12 @@ slot = 1
 icon = "cool-x"
 compress = true
 
-[package.metadata.docs.rs]
-targets = ["armv7a-none-eabi"]
-
 [dependencies]
-vexide = { version = "0.7.0", default-features = false, features = [
-  "core",
-  "devices",
-] }
+vexide = { version = "0.8.0-alpha.2" }
 
 [dev-dependencies]
-vexide = "0.7.0"
+vexide = { version = "0.8.0-alpha.2", features = [
+  "full",
+  "vex-sdk-jumptable",
+  "vex-sdk-mock",
+] }
