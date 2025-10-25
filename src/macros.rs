@@ -1,7 +1,6 @@
 /// A macro that creates a set of sharable motors.
 ///
 /// See [`motor_group!`] for more details.
-/// ```
 #[macro_export]
 macro_rules! shared_motors {
     ( $item:tt ) => {{ $crate::shared_motors::SharedMotors::new($crate::motor_group!($item)) }};
@@ -15,8 +14,8 @@ macro_rules! shared_motors {
 macro_rules! motor_group {
     ( $( $item:expr ),* $(,)?) => {
         {
-            use ::core::cell::RefCell;
-            use ::alloc::{vec::Vec};
+            use ::std::vec::Vec;
+            use ::vexide::smart::motor::Motor;
 
             let mut temp_vec: Vec<Motor> = Vec::new();
 
@@ -50,9 +49,6 @@ mod tests {
                 Direction::Forward
             ),
         ];
+        println!("{:?}", mg_1);
     }
 }
-
-// TODO: Add a macro for creating a motor group using only a list of ports and
-//       a gearset. It would do something like PROS does with - indicating
-//       reversed motors.
