@@ -13,6 +13,7 @@ use crate::{GetterResult, MotorGroup, MotorGroupError, WriteErrorStrategy};
 ///
 /// This simply wraps MotorGroups with a newtype while adding some traits useful
 /// for using them.
+#[derive(Clone, Debug)]
 pub struct SharedMotors<M: AsRef<[Motor]> + AsMut<[Motor]> = Vec<Motor>>(
     pub Rc<RefCell<MotorGroup<M>>>,
 );
